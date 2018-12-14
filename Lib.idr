@@ -13,11 +13,21 @@ forever = More forever
 
 data Player = X | O
 
+Eq Player where
+  X == X = True
+  O == O = True
+  _ == _ = False
+
 Show Player where
   show X = "X"
   show O = "O"
 
 data Cell = Blank | P Player
+
+Eq Cell where
+  (==) Blank Blank  = True
+  (==) (P p) (P p') = p == p'
+  (==) _     _      = False
 
 Show Cell where
   show Blank = " "
@@ -108,13 +118,13 @@ data Game : GameState -> Type where
   WinGame : (p : Player) -> Game (SFinished (SWon p))
   DrawGame : Game (SFinished SDraw)
   InProgress : (p : Player) -> GameField -> Game (SMoveOf p)
-  EndGame : Game SNotRunning
+  EndGame : Game prev -> Game SNotRunning
 
 Show (Game g) where
-  show EndGame = "Game is finished"
+  show (EndGame g)= "Game is finished. " ++ show g
   show StartGame = "Game to start"
   show (WinGame p) = "Player " ++ show p ++ " won the game."
-  show DrawGame = "It's a draw"
+  show DrawGame = "It's a draw."
   show (InProgress p xs) = drowField where
     drowRow : (Fin 3) -> String
     drowRow row =
@@ -136,14 +146,30 @@ data GameResult : (ty : Type) -> (ty -> GameState) -> Type where
 ok : (res : ty) -> (Game (state_fn res)) -> IO (GameResult ty state_fn)
 ok res instate = pure (OK res instate)
 
+playerCell : Player -> Cell -> Bool
+playerCell p (P pl) = pl == p
+playerCell _ Blank  = False
+
 checkCols : Player -> GameField -> Bool
--- checkCols p xs = [[rowIndex ] | row <- 0..Rows, col <- 0..Cols]
+checkCols p xs = any id (map (all (playerCell p)) rows) where
+  rows : List (List Cell)
+  rows = [[index (rowIndex r c) xs | c <- [0..2]] | r <- [0..2]]
 
 checkRows : Player -> GameField -> Bool
+checkRows p xs = any id (map (all (playerCell p)) rows) where
+  rows : List (List Cell)
+  rows = [[index (colIndex c r) xs | r <- [0..2]] | c <- [0..2]]
 
 checkDiags : Player -> GameField -> Bool
+checkDiags p xs = any id (map (all (playerCell p)) diags) where
+  diags : List (List Cell)
+  diags = 
+    let
+      xsInd = flip index xs
+    in map (map xsInd) (the (List (List (Fin 9))) [[0, 4, 8], [2, 4, 6]])
 
 noMoreBlank : GameField -> Bool
+noMoreBlank = all (/= Blank)
 
 checkMoveResult : GameField -> Player -> MoveResult
 checkMoveResult xs p = 
@@ -163,8 +189,8 @@ runCmd _ (InProgress p xs) (Move pos) = do
     NextMove => ok NextMove (InProgress (nextPlayer p) xs')
     ResultWon => ok ResultWon (WinGame p)
     ResultDraw => ok ResultDraw DrawGame
-runCmd _ instate (Won p) = ok () EndGame
-runCmd _ instate Draw = ok () EndGame
+runCmd _ instate (Won p) = ok () (EndGame instate)
+runCmd _ instate Draw = ok () (EndGame instate)
 runCmd _ instate ShowState = do printLn instate; ok () instate
 runCmd (More frvr) instate@(InProgress p xs) ReadMove = do
   putStr ("Move of " ++ show p ++ ": ")
