@@ -139,7 +139,7 @@ Show (Game g) where
                 drowRow 1 ++ "\n" ++
                 "---+---+---" ++ "\n" ++
                 drowRow 2 ++ "\n"
-                
+
 data GameResult : (ty : Type) -> (ty -> GameState) -> Type where
   OK : (res : ty) -> (Game (state_fn res)) -> GameResult ty state_fn
 
@@ -176,8 +176,10 @@ checkMoveResult xs p =
   if (checkCols p xs) || 
      (checkRows p xs) ||
      (checkDiags p xs)
-  then ResultWon
-  else if noMoreBlank xs
+  then 
+    ResultWon
+  else 
+    if noMoreBlank xs
        then ResultDraw
        else NextMove
 
@@ -218,4 +220,3 @@ runLoop : Forever -> Game instate -> GameLoop a instate state_fn -> IO a
 runLoop (More frvr) inst (x >>= f) = do (OK res' st') <- runCmd frvr inst x
                                         runLoop frvr st' (f res')
 runLoop _ inst Exit = pure ()
-
