@@ -3,71 +3,13 @@ module Lib
 import Data.Vect
 import Data.Fin
 
+import Utils
+
 %default total
-
-data Forever = More Forever
-
-partial
-forever : Forever
-forever = More forever
-
-data Player = X | O
-
-Eq Player where
-  X == X = True
-  O == O = True
-  _ == _ = False
-
-Show Player where
-  show X = "X"
-  show O = "O"
-
-data Cell = Blank | P Player
-
-Eq Cell where
-  (==) Blank Blank  = True
-  (==) (P p) (P p') = p == p'
-  (==) _     _      = False
-
-Show Cell where
-  show Blank = " "
-  show (P p) = show p
-
--- This is the only suported size!
-Rows : Nat
-Rows = 3
-
--- This is the only suported size!
-Cols : Nat
-Cols = 3
-
-FieldSize : Nat
-FieldSize = Rows * Cols
-
-GameField : Type
-GameField = Vect FieldSize Cell
-
-rowIndex : Nat -> Nat -> Fin FieldSize
-rowIndex r c = 
-  case natToFin (c + r * Cols) FieldSize of
-    Nothing => FZ
-    (Just x) => x
-
-colIndex : Nat -> Nat -> Fin FieldSize
-colIndex = flip rowIndex
 
 data FinishedState = SWon Player | SDraw
 
 data GameState = SMoveOf Player | SFinished FinishedState | SNotRunning
-
-data MoveResult : Type where
-  NextMove : MoveResult
-  ResultWon : MoveResult
-  ResultDraw : MoveResult
-
-nextPlayer : Player -> Player
-nextPlayer X = O
-nextPlayer O = X
 
 data GameCmd : (ty : Type) -> GameState -> (ty -> GameState) -> Type where
   NewGame : (p : Player) -> GameCmd () SNotRunning (const (SMoveOf p))
@@ -145,43 +87,6 @@ data GameResult : (ty : Type) -> (ty -> GameState) -> Type where
 
 ok : (res : ty) -> (Game (state_fn res)) -> IO (GameResult ty state_fn)
 ok res instate = pure (OK res instate)
-
-playerCell : Player -> Cell -> Bool
-playerCell p (P pl) = pl == p
-playerCell _ Blank  = False
-
-checkCols : Player -> GameField -> Bool
-checkCols p xs = any id (map (all (playerCell p)) rows) where
-  rows : List (List Cell)
-  rows = [[index (rowIndex r c) xs | c <- [0..2]] | r <- [0..2]]
-
-checkRows : Player -> GameField -> Bool
-checkRows p xs = any id (map (all (playerCell p)) rows) where
-  rows : List (List Cell)
-  rows = [[index (colIndex c r) xs | r <- [0..2]] | c <- [0..2]]
-
-checkDiags : Player -> GameField -> Bool
-checkDiags p xs = any id (map (all (playerCell p)) diags) where
-  diags : List (List Cell)
-  diags = 
-    let
-      xsInd = flip index xs
-    in map (map xsInd) (the (List (List (Fin 9))) [[0, 4, 8], [2, 4, 6]])
-
-noMoreBlank : GameField -> Bool
-noMoreBlank = all (/= Blank)
-
-checkMoveResult : GameField -> Player -> MoveResult
-checkMoveResult xs p = 
-  if (checkCols p xs) || 
-     (checkRows p xs) ||
-     (checkDiags p xs)
-  then 
-    ResultWon
-  else 
-    if noMoreBlank xs
-       then ResultDraw
-       else NextMove
 
 runCmd : Forever -> Game instate -> GameCmd a instate state_fn -> IO (GameResult a state_fn)
 runCmd _ instate (NewGame p) = ok () (InProgress p $ replicate FieldSize Blank)
