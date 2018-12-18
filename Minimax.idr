@@ -5,14 +5,25 @@ import Data.Vect
 
 import Utils
 
-Estimation : Type
-Estimation = Player
+data Estimation = PO | DR | PX
+
+Eq Estimation where
+  (==) PO PO = True
+  (==) DR DR = True
+  (==) PX PX = True
+  (==) _  _  = False
+
+Ord Estimation where
+  compare PO PO = EQ
+  compare DR DR = EQ
+  compare PX PX = EQ
+  compare DR PX = LT
+  compare DR PO = GT  
+  compare PO _  = LT
+  compare PX _  = GT
 
 EstPos : Type
 EstPos = (Estimation, Position)
-
-MEstPos : Type
-MEstPos = Maybe EstPos
 
 Ord Player where
   compare X X = EQ
@@ -23,7 +34,7 @@ Ord Player where
 data TreeEstimation = Estimated | NotEstimated
 
 data GameTree : Type where
-  GTree : MEstPos -> GameField -> List GameTree -> GameTree
+  GTree : Position -> Estimation -> GameField -> List GameTree -> GameTree
   
 -- Functor GameTree where
 --  map f (GTree pos est a xs) = ?hole
@@ -32,58 +43,43 @@ lastIndex : Vect (S len) elem -> Fin (S len)
 lastIndex {len = Z} [x] = FZ
 lastIndex {len = (S k)} (x::xs) = FS $ lastIndex xs
 
---- we need always estimated value if we have it
-mepBest : Player -> MEstPos -> MEstPos -> MEstPos
-mepBest p m@(Just (e, _)) m'@(Just (e', _)) = let op = if p == X then (>) else (<) in if e `op` e' then m else m'
-mepBest p Nothing m' = m'
-mepBest p m Nothing = m
+bestEst : Player -> Estimation -> Estimation -> Estimation
+bestEst p e e' = let op = if p == X then (>) else (<) in if e `op` e' then e else e'
 
--- draw is lost... just a bit less to write, but actually it will play wrongly
 minimax : Player -> GameTree -> GameTree
-minimax player (GTree Nothing field []) = 
-  let
-    (ep, estTreeList) = foldr foldingf (Nothing, []) possibleMoves
-      -- case checkMoveResult field player of
-      --                     ResultWon => (Just (player, (the (Fin FieldSize) FZ)), [])
-      --                     ResultDraw => (Just (nextPlayer player, (the (Fin FieldSize) FZ)), [])
-      --                     NextMove => 
-  in
-    (GTree ep field estTreeList)
+minimax player tree@(GTree pos DR field []) = 
+  case checkMoveResult field player of
+    ResultWon => let res = if player == X then PX else PO in GTree pos res field []
+    ResultDraw => tree
+    NextMove => let (e, estTreeList) = foldr foldingf (DR, []) possibleMoves in GTree pos e field estTreeList
   where
     nplayer : Player
     nplayer = nextPlayer player
-    mepBestP : MEstPos -> MEstPos -> MEstPos
-    mepBestP = mepBest player
-    foldingf : GameTree {-not estimated-} -> (MEstPos, List (Position, GameTree {-estimated-})) -> (MEstPos, List GameTree{-estimated-})
-    foldingf tree@(GTree _{-empty-} field _{-empty-}) (mep, xs) =
+    best : Estimation -> Estimation -> Estimation
+    best = bestEst player
+    foldingf : GameTree {-not estimated-} -> (Estimation, List GameTree {-estimated-}) -> (Estimation, List GameTree{-estimated-})
+    foldingf tree (e, xs) =
       let
-        mvr = checkMoveResult field player
-        (mep', t) = moveResultToFoldType mvr
-      in ?ho--(mepBestP mep mep', t :: xs)
-        where 
-          moveResultToFoldType : MoveResult -> (MEstPos, GameTree)
-          moveResultToFoldType NextMove = let t1@(GTree mep1 _ _) = minimax nplayer tree in (mep1, t1)
-          moveResultToFoldType ResultWon = (Just (player, ?pos), tree)
-          moveResultToFoldType ResultDraw = (Just (nplayer, ?posd), tree)
+        t@(GTree _ e' _ _) = minimax nplayer tree
+      in (best e' e, t :: xs)
           
     upWCurPlayer : Cell -> Cell
     upWCurPlayer = const $ P player 
     singletonTree : Position -> GameTree
-    singletonTree pos = GTree Nothing (updateAt pos upWCurPlayer field) []
-    possibleMovesHelper : Position -> List (Position, GameTree)
-    -- possibleMovesHelper FZ =
-    --   if Blank == index FZ field
-    --      then [singletonTree FZ]
-    --      else []
-    -- possibleMovesHelper pos@(FS npos) = 
-    --   let
-    --     rest = possibleMovesHelper $ weaken npos
-    --   in
-    --     if Blank == index pos field
-    --        then singletonTree pos :: rest
-    --        else rest
-    possibleMoves : List (Position, GameTree)
+    singletonTree pos = GTree pos DR (updateAt pos upWCurPlayer field) []
+    possibleMovesHelper : Position -> List GameTree
+    possibleMovesHelper FZ =
+      if Blank == index FZ field
+         then [singletonTree FZ]
+         else []
+    possibleMovesHelper pos@(FS npos) = 
+      let
+        rest = possibleMovesHelper $ weaken npos
+      in
+        if Blank == index pos field
+           then singletonTree pos :: rest
+           else rest
+    possibleMoves : List GameTree
     possibleMoves = possibleMovesHelper (lastIndex field)
-minimax player (GTree (Just _) _ _) = ?never_here_1
-minimax player (GTree _ _ xs) = ?never_here_2
+minimax player (GTree _ _ _ _) = ?never_here_1
 
