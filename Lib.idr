@@ -4,12 +4,19 @@ import Data.Vect
 import Data.Fin
 
 import Utils
+import Minimax
 
 %default total
 
+public export
 data FinishedState = SWon Player | SDraw
 
+-- let X be always human player
+-- and O be always CPU player
+public export
 data GameState = SMoveOf Player | SFinished FinishedState | SNotRunning
+
+
 
 data GameCmd : (ty : Type) -> GameState -> (ty -> GameState) -> Type where
   NewGame : (p : Player) -> GameCmd () SNotRunning (const (SMoveOf p))
@@ -23,7 +30,8 @@ data GameCmd : (ty : Type) -> GameState -> (ty -> GameState) -> Type where
   Draw : GameCmd () (SFinished SDraw) (const SNotRunning)
   
   ShowState : GameCmd () st (const st)
-  ReadMove : GameCmd (Fin FieldSize) (SMoveOf p) (const (SMoveOf p))
+  ReadMoveHuman : GameCmd (Fin FieldSize) (SMoveOf p) (const (SMoveOf p))
+  ReadMoveCPU : GameCmd (Fin FieldSize) (SMoveOf p) (const (SMoveOf p))
   
   Pure : (res : a) -> GameCmd a (state_fn res) state_fn
   (>>=) : GameCmd a state1 state2_fn -> 
@@ -31,6 +39,7 @@ data GameCmd : (ty : Type) -> GameState -> (ty -> GameState) -> Type where
           GameCmd b state1 state3_fn
 
 namespace GameLoop
+  export
   data GameLoop : (ty : Type) -> GameState -> (ty -> GameState) -> Type where
     (>>=) : GameCmd a state1 state2_fn -> 
             ((res : a) -> Inf (GameLoop b (state2_fn res) state3_fn)) ->
@@ -40,7 +49,7 @@ namespace GameLoop
 gameLoop : GameLoop () (SMoveOf p) (const SNotRunning)
 gameLoop {p} = do
   ShowState
-  move <- ReadMove
+  move <- if p == X then ReadMoveHuman else ReadMoveCPU
   mres <- Move move
   case mres of
     NextMove => gameLoop
@@ -51,10 +60,12 @@ gameLoop {p} = do
                      ShowState
                      Exit
 
+export
 crossesZeros : GameLoop () SNotRunning (const SNotRunning)
 crossesZeros = do NewGame X
                   gameLoop
 
+public export
 data Game : GameState -> Type where
   StartGame : Game SNotRunning
   WinGame : (p : Player) -> Game (SFinished (SWon p))
@@ -88,6 +99,7 @@ data GameResult : (ty : Type) -> (ty -> GameState) -> Type where
 ok : (res : ty) -> (Game (state_fn res)) -> IO (GameResult ty state_fn)
 ok res instate = pure (OK res instate)
 
+partial
 runCmd : Forever -> Game instate -> GameCmd a instate state_fn -> IO (GameResult a state_fn)
 runCmd _ instate (NewGame p) = ok () (InProgress p $ replicate FieldSize Blank)
 runCmd _ (InProgress p xs) (Move pos) = do
@@ -99,7 +111,10 @@ runCmd _ (InProgress p xs) (Move pos) = do
 runCmd _ instate (Won p) = ok () (EndGame instate)
 runCmd _ instate Draw = ok () (EndGame instate)
 runCmd _ instate ShowState = do printLn instate; ok () instate
-runCmd (More frvr) instate@(InProgress p xs) ReadMove = do
+runCmd _ instate@(InProgress p xs) ReadMoveCPU = do
+  putStrLn "Computer is thinking..."
+  ok (runMinimax p xs) instate
+runCmd (More frvr) instate@(InProgress p xs) ReadMoveHuman = do
   putStr ("Move of " ++ show p ++ ": ")
   ans <- getLine
   case unpack ans of
@@ -107,20 +122,21 @@ runCmd (More frvr) instate@(InProgress p xs) ReadMove = do
               then
                 case integerToFin (cast (ord cpos - ord '0')) FieldSize of
                   Nothing => do putStrLn "Invalid input. Please use numbers 0-8 to identify needed cell."
-                                runCmd frvr instate (do ShowState; ReadMove)
+                                runCmd frvr instate (do ShowState; ReadMoveHuman)
                   (Just mv) => case index mv xs of
                                  Blank  => ok mv instate
                                  (P pl) => do putStrLn $ "Invalid input. Cell is not free (" ++ show pl ++ ")."
-                                              runCmd frvr instate (do ShowState; ReadMove)
+                                              runCmd frvr instate (do ShowState; ReadMoveHuman)
               else do
                 putStrLn "Invalid input. Please use numbers 0-8 to identify needed cell."
-                runCmd frvr instate (do ShowState; ReadMove)
-    _      => runCmd frvr instate (do ShowState; ReadMove)
+                runCmd frvr instate (do ShowState; ReadMoveHuman)
+    _      => runCmd frvr instate (do ShowState; ReadMoveHuman)
 runCmd _ instate (Pure res) = ok res instate
 runCmd frvr instate (cmd >>= cont) = do 
   (OK res' st') <- runCmd frvr instate cmd
   runCmd frvr st' (cont res')
 
+export partial
 runLoop : Forever -> Game instate -> GameLoop a instate state_fn -> IO a
 runLoop (More frvr) inst (x >>= f) = do (OK res' st') <- runCmd frvr inst x
                                         runLoop frvr st' (f res')
