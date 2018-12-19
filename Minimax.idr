@@ -1,21 +1,30 @@
 module Minimax
 
+import Debug.Trace
+
 import Data.Fin
+--import Data.Fin.Extra
 import Data.Vect
 
 import Utils
 
+%default partial
+
+finToNatWeakenNeutral : {n : Fin m} -> finToNat (weaken n) = finToNat n
+finToNatWeakenNeutral {n=FZ} = Refl
+finToNatWeakenNeutral {m=S (S _)} {n=FS _} = cong finToNatWeakenNeutral
+
 public export
 data Estimation = PO | DR | PX
 
-export
+export total
 Eq Estimation where
   (==) PO PO = True
   (==) DR DR = True
   (==) PX PX = True
   (==) _  _  = False
 
-export
+export total
 Ord Estimation where
   compare PO PO = EQ
   compare DR DR = EQ
@@ -27,17 +36,24 @@ Ord Estimation where
 
 public export
 data GameTree : Type where
-  GTree : (pos : Position) -> (e : Estimation) -> (field : GameField) -> 
+  GTree : (pos : Position)     -> 
+          (e : Estimation)     -> 
+          (field : GameField)  -> 
           (ts : List GameTree) -> GameTree
 
+total public export
 lastIndex : Vect (S len) elem -> Fin (S len)
 lastIndex {len = Z} [x] = FZ
 lastIndex {len = (S k)} (x::xs) = FS $ lastIndex xs
 
+-- natToFin' : (i, n : Nat) -> LT i n -> Fin n
+
+public export
 possibleMoves : Player -> GameField -> List (Position, GameField)
 possibleMoves player field = possibleMovesHelper (lastIndex field) where
   pair : Position -> (Position, GameField)
   pair pos = (pos, updateAt pos (const $ P player) field)
+  -- possibleMovesHelper : Fin n -> LTE n FieldSize -> List (Position, GameField)
   possibleMovesHelper : Position -> List (Position, GameField)
   possibleMovesHelper FZ =
     if Blank == index FZ field
@@ -51,37 +67,37 @@ possibleMoves player field = possibleMovesHelper (lastIndex field) where
          then pair pos :: rest
          else rest
 
--- total
-minimax : Player -> GameField -> GameTree
+export
+minimax : Player -> GameField -> (Position, Estimation)
 minimax player field = 
   let
+    tmp = trace "we are here" 1
     ts = map estimate $ possibleMoves player field
     (pos, e) = the (Position, Estimation) $
                    (case nonEmpty ts of
-                      Yes (IsNonEmpty {xs=x::xs}) => getBestEst (x::xs)
-                      No contra => ?never_here) -- this should not happen
+                      Yes (IsNonEmpty {xs=y::ys}) => getBestEst (y::ys)
+                      No contra => trace "this should not happen ever" ?never_here) -- this should not happen
   in 
-    GTree pos e field ts
+    (pos, e)
   where
     op : Estimation -> Estimation -> Bool
     op = if player == X then (>) else (<)
-    getBestEst : (ts : List GameTree) -> 
+    getBestEst : (ts : List (Position, Estimation)) -> 
                  {auto prf : NonEmpty ts} -> (Position, Estimation)
-    getBestEst ((GTree p1 e1 _ _) :: xs) {prf = IsNonEmpty} = 
-      foldr (\(GTree pos e _ _), (pos', e') => if e `op` e' then (pos, e) else (pos', e')) (p1, e1) xs
-    estimate : (Position, GameField) -> GameTree
+    getBestEst (x :: xs) {prf = IsNonEmpty} = 
+      foldr (\(pos, e), (pos', e') => if e `op` e' then (pos, e) else (pos', e')) x xs
+    estimate : (Position, GameField) -> (Position, Estimation)
     estimate (pos', field') = case checkMoveResult field' player of
-      ResultWon => let res = if player == X then PX else PO in GTree pos' res field' []
-      ResultDraw => GTree pos' DR field' []
-      NextMove => 
-        let 
-          (GTree p e f ts) = minimax (nextPlayer player) field'
-        in
-          (GTree pos' e field' ts)
+      ResultWon => let e' = if player == X then PX else PO in (pos', e')
+      ResultDraw => (pos', DR)
+      NextMove => let (_, e') = minimax (nextPlayer player) field' in (pos', e')
 
-export --total
+export
 runMinimax : Player -> GameField -> Position
 runMinimax player field = 
-  let (GTree pos _ _ _) = minimax player field in pos
+  let (pos, _) = minimax player field in pos
 
+-- Local Variables:
+-- idris-load-packages: ("effects")
+-- End:
  
