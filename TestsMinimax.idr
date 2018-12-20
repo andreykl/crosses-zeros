@@ -84,7 +84,7 @@ PMType = List (Position, GameField)
 
 main : IO ()
 main = spec $ do
-  describe "possibleMoves tests" $ do
+  describe "$ possibleMoves tests" $ do
     describe "this is 1 step test" $ do
       it "adds one X to the only empty position on field" $ do
         possibleMoves X gf1 `shouldBe` [(8, gf1X)]
@@ -105,6 +105,9 @@ main = spec $ do
         (length $ possibleMoves O gf9) `shouldBe` 9
       it "tryes to add moves to full field" $ do
         (length $ possibleMoves X gfDraw) `shouldBe` 0
+  describe "$ last index" $ do
+    it "takes last index of GameField" $ do
+      finToNat (lastIndex gf1) `shouldBe` (FieldSize - 1)
 
 -- Local Variables:
 -- idris-load-packages: ("specdris")

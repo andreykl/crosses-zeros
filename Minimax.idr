@@ -17,6 +17,12 @@ finToNatWeakenNeutral {m=S (S _)} {n=FS _} = cong finToNatWeakenNeutral
 public export
 data Estimation = PO | DR | PX
 
+export
+Show Estimation where
+  show PO = "PO"
+  show PX = "PX"
+  show DR = "DR"
+
 export total
 Eq Estimation where
   (==) PO PO = True
@@ -67,35 +73,33 @@ possibleMoves player field = possibleMovesHelper (lastIndex field) where
          then pair pos :: rest
          else rest
 
+opByPlayer : Player -> Estimation -> Estimation -> Bool
+opByPlayer p = if p == X then (>) else (<)
+
 export
-minimax : Player -> GameField -> (Position, Estimation)
-minimax player field = 
-  let
-    tmp = trace "we are here" 1
-    ts = map estimate $ possibleMoves player field
-    (pos, e) = the (Position, Estimation) $
-                   (case nonEmpty ts of
-                      Yes (IsNonEmpty {xs=y::ys}) => getBestEst (y::ys)
-                      No contra => trace "this should not happen ever" ?never_here) -- this should not happen
-  in 
-    (pos, e)
+minimax : Player -> Position -> GameField -> (Position, Estimation)
+minimax player pos field = 
+  case checkMoveResult field player of
+    ResultWon => let e = if player == X then PX else PO in (pos, e)
+    ResultDraw => (pos, DR)
+    NextMove => 
+      (pos, foldr (\(p, gamefield), e =>
+              case minimax nextp p gamefield of
+                (_, e') => e `best` e')
+            DR (possibleMoves nextp field))
   where
-    op : Estimation -> Estimation -> Bool
-    op = if player == X then (>) else (<)
-    getBestEst : (ts : List (Position, Estimation)) -> 
-                 {auto prf : NonEmpty ts} -> (Position, Estimation)
-    getBestEst (x :: xs) {prf = IsNonEmpty} = 
-      foldr (\(pos, e), (pos', e') => if e `op` e' then (pos, e) else (pos', e')) x xs
-    estimate : (Position, GameField) -> (Position, Estimation)
-    estimate (pos', field') = case checkMoveResult field' player of
-      ResultWon => let e' = if player == X then PX else PO in (pos', e')
-      ResultDraw => (pos', DR)
-      NextMove => let (_, e') = minimax (nextPlayer player) field' in (pos', e')
+    best : Estimation -> Estimation -> Estimation
+    best e e' = let op = opByPlayer player in if e `op` e' then e else e'
+    nextp : Player
+    nextp = nextPlayer player
 
 export
 runMinimax : Player -> GameField -> Position
-runMinimax player field = 
-  let (pos, _) = minimax player field in pos
+runMinimax player field = bestMove $ possibleMoves player field where
+  best : (Position, Estimation) -> (Position, Estimation) -> (Position, Estimation)
+  best m@(_, e) m'@(_, e') = let op = opByPlayer player in if e `op` e' then m else m'
+  bestMove : List (Position, GameField) -> Position
+  bestMove = fst . (foldr (\(pos, field), acc => acc `best` (minimax player pos field)) (FZ, DR))
 
 -- Local Variables:
 -- idris-load-packages: ("effects")
