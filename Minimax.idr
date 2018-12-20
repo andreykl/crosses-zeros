@@ -76,33 +76,57 @@ possibleMoves player field = possibleMovesHelper (lastIndex field) where
 opByPlayer : Player -> Estimation -> Estimation -> Bool
 opByPlayer p = if p == X then (>) else (<)
 
+bestForOpponentP : Player -> Estimation -> Estimation -> Estimation
+bestForOpponentP player e e' = let op = opByPlayer (nextPlayer player) in if e `op` e' then e else e'
+
+worstP : Player -> Estimation -> Estimation -> Estimation
+worstP player e e' = let op = opByPlayer player in if e `op` e' then e' else e
+
+bestP : Player -> Estimation -> Estimation -> Estimation
+bestP player e e' = let op = opByPlayer player in if e `op` e' then e else e'
+
+bestAbsP : Player -> Estimation
+bestAbsP p = if p == X then PX else PO
+
 export
 minimax : Player -> GameField -> Estimation
 minimax player field = 
   case checkMoveResult field player of
     ResultWon => if player == X then PX else PO
     ResultDraw => DR
-    NextMove => foldr (\(_, gamefield), e => e `bestForOpponent` (minimax nextp gamefield))
-                      DR (possibleMoves nextp field)
+    NextMove => foldr (\(_, gamefield), e => e `worst` (minimax nextp gamefield))
+                      bestAbs (possibleMoves nextp field)
   where
     nextp : Player
-    nextp = nextPlayer player  
+    nextp = nextPlayer player
+    bestAbs : Estimation
+    bestAbs = bestAbsP player  
     bestForOpponent : Estimation -> Estimation -> Estimation
-    bestForOpponent e e' = let op = opByPlayer nextp in if e `op` e' then e else e'
-    -- worst : Estimation -> Estimation -> Estimation
-    -- worst e e' = let op = opByPlayer player in if e `op` e' then e' else e
+    bestForOpponent = bestForOpponentP player
+    worst : Estimation -> Estimation -> Estimation
+    worst e e' = worstP player e e'
+    best : Estimation -> Estimation -> Estimation
+    best = bestP player
 
 export
 runMinimax : Player -> GameField -> Position
 runMinimax player field = bestMove $ possibleMoves player field where
   best : (Position, Estimation) -> (Position, Estimation) -> (Position, Estimation)
   best m@(_, e) m'@(_, e') = let op = opByPlayer player in if e `op` e' then m else m'
-  worst : Estimation
-  worst = if player == X then PO else PX
+  -- worst : Estimation
+  -- worst = if player == X then PO else PX
   bestMove : List (Position, GameField) -> Position
-  bestMove = fst . (foldr (\(pos, field), acc => acc `best` (pos, minimax player field)) (FZ, worst))
+  bestMove mvs = 
+    case emvs of
+         [] => ?never_here
+         (x :: xs) => fst (foldr (\est, acc => acc `best` est) x xs)
+    where
+      emvs : List (Position, Estimation)
+      emvs = map (\(pos, field) => (pos, minimax player field)) mvs
+      
 
 -- Local Variables:
 -- idris-load-packages: ("effects")
 -- End:
+ 
  

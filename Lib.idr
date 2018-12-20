@@ -112,7 +112,7 @@ runCmd _ instate (Won p) = ok () (EndGame instate)
 runCmd _ instate Draw = ok () (EndGame instate)
 runCmd _ instate ShowState = do printLn instate; ok () instate
 runCmd _ instate@(InProgress p xs) ReadMoveCPU = do
-  putStrLn "Computer is thinking..."
+  putStrLn ("Move of " ++ show p ++ ". Computer is thinking...")
   ok (runMinimax p xs) instate
 runCmd (More frvr) instate@(InProgress p xs) ReadMoveHuman = do
   putStr ("Move of " ++ show p ++ ": ")
