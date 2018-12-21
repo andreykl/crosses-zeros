@@ -88,19 +88,29 @@ bestP player e e' = let op = opByPlayer player in if e `op` e' then e else e'
 bestAbsP : Player -> Estimation
 bestAbsP p = if p == X then PX else PO
 
+worstAbsP : Player -> Estimation
+worstAbsP p = if p == X then PO else PX
+
 export
 minimax : Player -> GameField -> Estimation
 minimax player field = 
   case checkMoveResult field player of
     ResultWon => if player == X then PX else PO
     ResultDraw => DR
-    NextMove => foldr (\(_, gamefield), e => e `worst` (minimax nextp gamefield))
-                      bestAbs (possibleMoves nextp field)
+    NextMove => fromEither $ foldlM (\acc, (_, gamefield) => 
+                                           let acc' = acc `worst` (minimax nextp gamefield)
+                                           in if worstAbs == acc' then Left acc' else Right acc'
+                                    )
+                                    bestAbs (possibleMoves nextp field)
+                -- foldr (\(_, gamefield), e => e `worst` (minimax nextp gamefield))
+                --        bestAbs (possibleMoves nextp field)
   where
     nextp : Player
     nextp = nextPlayer player
     bestAbs : Estimation
-    bestAbs = bestAbsP player  
+    bestAbs = bestAbsP player
+    worstAbs : Estimation
+    worstAbs = worstAbsP player
     bestForOpponent : Estimation -> Estimation -> Estimation
     bestForOpponent = bestForOpponentP player
     worst : Estimation -> Estimation -> Estimation
