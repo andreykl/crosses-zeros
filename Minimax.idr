@@ -92,23 +92,24 @@ worstAbsP : Player -> Estimation
 worstAbsP p = if p == X then PO else PX
 
 export
-minimax : Player -> GameField -> Estimation
-minimax player field = 
+minimax : Player -> GameField -> Estimation -> Estimation -> Estimation
+minimax player field alpha beta = -- alpha for O, beta for X
   case checkMoveResult field player of
     ResultWon => if player == X then PX else PO
     ResultDraw => DR
-    NextMove => fromEither $ foldlM (\acc, (_, gamefield) => 
-                                           let acc' = acc `worst` (minimax nextp gamefield)
-                                           in if worstAbs == acc' then Left acc' else Right acc'
-                                    )
-                                    bestAbs (possibleMoves nextp field)
-                -- foldr (\(_, gamefield), e => e `worst` (minimax nextp gamefield))
-                --        bestAbs (possibleMoves nextp field)
+    NextMove => let fold = if player == X then foldX else foldO 
+                in fromEither $ fold bestAbs (possibleMoves nextp field)
+      -- foldr (\(_, gamefield), e => e `worst` (minimax nextp gamefield))
+      --        bestAbs (possibleMoves nextp field)
   where
     nextp : Player
     nextp = nextPlayer player
     bestAbs : Estimation
     bestAbs = bestAbsP player
+    ab : Estimation -> Estimation -> Estimation
+    ab a b = if player == X then b else a
+    opAB : Estimation -> Estimation -> Bool
+    opAB = if player == X then (>=) else (<=)
     worstAbs : Estimation
     worstAbs = worstAbsP player
     bestForOpponent : Estimation -> Estimation -> Estimation
@@ -117,6 +118,26 @@ minimax player field =
     worst e e' = worstP player e e'
     best : Estimation -> Estimation -> Estimation
     best = bestP player
+    foldX : Estimation                   ->
+            List (Position, GameField)   ->
+            Either Estimation Estimation
+    foldX acc xs = 
+      foldlM (\cbeta, (_, gamefield) => 
+               let v = (minimax nextp gamefield alpha cbeta)
+               in 
+                  if v <= cbeta then Right v else Left cbeta)
+             beta xs
+    foldO : Estimation                   ->
+            List (Position, GameField)   ->
+            Either Estimation Estimation
+    foldO acc xs =
+      foldlM (\calpha, (_, gamefield) => 
+               let v = (minimax nextp gamefield calpha beta)
+               in 
+                  if v >= calpha then Right v else Left calpha)
+             alpha xs
+
+
 
 export
 runMinimax : Player -> GameField -> Position
@@ -132,7 +153,7 @@ runMinimax player field = bestMove $ possibleMoves player field where
          (x :: xs) => fst (foldr (\est, acc => acc `best` est) x xs)
     where
       emvs : List (Position, Estimation)
-      emvs = map (\(pos, field) => (pos, minimax player field)) mvs
+      emvs = map (\(pos, field) => (pos, minimax player field PO PX)) mvs
       
 
 -- Local Variables:
